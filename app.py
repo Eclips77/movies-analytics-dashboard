@@ -66,7 +66,7 @@ genre = avg_budget['genre']
 avg_bud = avg_budget['budget']
 
 fig = plt.figure(figsize=(19, 10))
-plt.bar(genre, avg_bud, color='maroon')
+plt.bar(genre, avg_bud, color='r')
 plt.xlabel('Genre')
 plt.ylabel('Average Budget (Millions)')
 plt.title('Average Budget of Movies by Genre (in Millions)')
