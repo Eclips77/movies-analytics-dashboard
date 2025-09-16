@@ -1,73 +1,117 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import matplotlib.pyplot as plt
 
-# Page configuration
+# Main page configuration
 st.set_page_config(page_title="🎬 Movie Dashboard Analysis", layout='wide')
-st.header("Interactive Dashboard")
-st.subheader("Interact with this dashboard using the widgets on the sidebar")
 
-# Read data
-movies_data = pd.read_csv("https://raw.githubusercontent.com/danielgrijalva/movie-stats/7c6a562377ab5c91bb80c405be50a0494ae8e582/movies.csv")
-movies_data.dropna(inplace=True)
+@st.cache_data
+def load_data():
+    """
+    Loads the movie data from a CSV file via URL and caches it.
+    Rows with any missing values are dropped.
+    """
+    data = pd.read_csv("https://raw.githubusercontent.com/danielgrijalva/movie-stats/7c6a562377ab5c91bb80c405be50a0494ae8e582/movies.csv")
+    data.dropna(inplace=True)
+    return data
 
-# Sidebar filters
-year_list = movies_data['year'].unique().tolist()
-score_rating = movies_data['score'].unique().tolist()
-genre_list = movies_data['genre'].unique().tolist()
+def setup_sidebar(data):
+    """
+    Sets up the sidebar widgets for filtering and returns the selected values.
+    """
+    st.sidebar.header("Filter Options")
 
-with st.sidebar:
-    st.write("Select a score range")
-    new_score_rating = st.slider(
-        label="Score range:",
+    score_range = st.sidebar.slider(
+        label="Select a score range:",
         min_value=1.0,
         max_value=10.0,
         value=(3.0, 4.0)
     )
 
-    st.write("Select preferred genres and year")
-    new_genre_list = st.multiselect(
-        'Choose Genre:',
+    genre_list = sorted(data['genre'].unique().tolist())
+    selected_genres = st.sidebar.multiselect(
+        'Choose preferred genres:',
         genre_list,
         default=genre_list
     )
 
-    year = st.selectbox('Choose a Year', year_list, 0)
+    min_year = int(data['year'].min())
+    max_year = int(data['year'].max())
+    selected_year_range = st.sidebar.slider(
+        'Choose a Year Range:',
+        min_value=min_year,
+        max_value=max_year,
+        value=(min_year, max_year)
+    )
+    return score_range, selected_genres, selected_year_range
 
-# Combined filter for all widgets
-combined_filter = (
-    movies_data['score'].between(*new_score_rating) &
-    movies_data['genre'].isin(new_genre_list) &
-    (movies_data['year'] == year)
-)
+def get_filtered_data(data, score_range, genres, year_range):
+    """
+    Filters the dataframe based on the selected criteria from the sidebar.
+    """
+    return data[
+        data['score'].between(*score_range) &
+        data['genre'].isin(genres) &
+        data['year'].between(year_range[0], year_range[1])
+    ]
 
-filtered_data = movies_data[combined_filter]
+def display_visualizations(data):
+    """
+    Displays the data visualizations in a tabbed interface.
+    """
+    st.header("📊 Data Visualizations")
+    tab1, tab2, tab3, tab4 = st.tabs(["📖 Filtered Data View", "📈 Movies per Genre", "💰 Average Budget by Genre", "💸 Score vs. Budget"])
 
-# VISUALIZATION SECTION
-col1, col2 = st.columns([2, 3])
+    with tab1:
+        st.write("#### Detailed Movie Data")
+        cols_to_display = ['name', 'genre', 'year', 'score', 'budget']
+        st.dataframe(data[cols_to_display], use_container_width=True)
 
-with col1:
-    st.write("#### Movies filtered by Year, Genre, and Score")
-    dataframe_genre_year = filtered_data[['name', 'genre', 'year']]
-    st.dataframe(dataframe_genre_year, width=400)
+    with tab2:
+        st.write("#### Number of Movies per Genre")
+        movies_per_genre = data.groupby('genre')['name'].count().reset_index().rename(columns={'name': 'count'})
+        fig_bar_genre = px.bar(movies_per_genre, x='genre', y='count', title='Number of Movies per Genre')
+        st.plotly_chart(fig_bar_genre, use_container_width=True)
 
-with col2:
-    st.write("#### Number of Movies per Genre")
-    rating_count_year = filtered_data.groupby('genre')['score'].count().reset_index()
-    figpx = px.line(rating_count_year, x='genre', y='score')
-    st.plotly_chart(figpx)
+    with tab3:
+        st.write("#### Average Movie Budget by Genre")
+        avg_budget = data.groupby('genre')['budget'].mean().reset_index()
+        avg_budget['budget_in_millions'] = (avg_budget['budget'] / 1_000_000).round(2)
+        fig_bar_budget = px.bar(
+            avg_budget,
+            x='genre',
+            y='budget_in_millions',
+            title='Average Movie Budget by Genre (in Millions)',
+            labels={'budget_in_millions': 'Average Budget (Millions)'}
+        )
+        st.plotly_chart(fig_bar_budget, use_container_width=True)
 
-st.write("Average Movie Budget (in Millions), Grouped by Genre")
+    with tab4:
+        st.write("#### Score vs. Budget Analysis")
+        fig_scatter = px.scatter(
+            data,
+            x='budget',
+            y='score',
+            hover_name='name',
+            size='score',
+            color='genre',
+            title='Movie Score vs. Budget'
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
-avg_budget = filtered_data.groupby('genre')['budget'].mean().round() / 1_000_000
-avg_budget = avg_budget.reset_index()
-genre = avg_budget['genre']
-avg_bud = avg_budget['budget']
+def main():
+    """
+    Main function to run the Streamlit application.
+    """
+    st.title("🎬 Movie Dashboard Analysis")
+    st.subheader("Interact with this dashboard using the widgets on the sidebar")
 
-fig = plt.figure(figsize=(19, 10))
-plt.bar(genre, avg_bud, color='r')
-plt.xlabel('Genre')
-plt.ylabel('Average Budget (Millions)')
-plt.title('Average Budget of Movies by Genre (in Millions)')
-st.pyplot(fig)
+    movies_data = load_data()
+    score_range, selected_genres, year_range = setup_sidebar(movies_data)
+    filtered_data = get_filtered_data(movies_data, score_range, selected_genres, year_range)
+
+    st.markdown("---")
+    display_visualizations(filtered_data)
+
+if __name__ == '__main__':
+    main()
